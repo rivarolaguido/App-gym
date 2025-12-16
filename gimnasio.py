@@ -4,6 +4,21 @@ import sqlite3
 from datetime import date
 import io # Necesario para manejar la carga de archivos
 
+# --- Mapeo Día de la Semana (Número a Nombre y viceversa) ---
+# 1 = Lunes, 7 = Domingo
+DIA_MAP = {
+    1: "Lunes",
+    2: "Martes",
+    3: "Miércoles",
+    4: "Jueves",
+    5: "Viernes",
+    6: "Sábado",
+    7: "Domingo"
+}
+# Diccionario invertido para el selectbox y validación
+INVERSE_DIA_MAP = {v: k for k, v in DIA_MAP.items()}
+
+
 # --- CONFIGURACIÓN DE LA BASE DE DATOS ---
 def init_db():
     conn = sqlite3.connect('gimnasio.db')
@@ -17,13 +32,14 @@ def init_db():
                   objetivo TEXT, 
                   fecha_ingreso TEXT)''')
     # Tabla de Planes
+    # NOTA: El campo 'dia' ahora guardará números enteros (1-7)
     c.execute('''CREATE TABLE IF NOT EXISTS planes
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   alumno_id INTEGER, 
                   ejercicio TEXT, 
                   series INTEGER, 
                   repeticiones TEXT, 
-                  dia TEXT,
+                  dia INTEGER,
                   FOREIGN KEY(alumno_id) REFERENCES alumnos(id))''')
     conn.commit()
     conn.close()
@@ -75,7 +91,7 @@ elif menu == "Ver Alumnos":
     else:
         st.info("Aún no hay alumnos registrados.")
 
-# --- SECCIÓN 3: CREAR PLAN (Sin cambios) ---
+# --- SECCIÓN 3: CREAR PLAN (Actualizado: 'dia' es número) ---
 elif menu == "Crear Plan":
     st.header("🏋️‍♂️ Crear Rutina")
     
@@ -90,22 +106,27 @@ elif menu == "Crear Plan":
         st.subheader(f"Agregar ejercicio para {seleccion}")
         
         c1, c2, c3, c4 = st.columns(4)
-        dia = c1.selectbox("Día", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
+        
+        # Muestra el nombre del día, pero guarda el número
+        dia_nombre = c1.selectbox("Día", list(INVERSE_DIA_MAP.keys()))
+        dia_numero = INVERSE_DIA_MAP[dia_nombre] # Convertir el nombre a número
+        
         ejercicio = c2.text_input("Ejercicio (ej. Press Banca)")
         series = c3.number_input("Series", min_value=1, value=3)
         reps = c4.text_input("Repeticiones (ej. 10-12)")
 
         if st.button("Agregar al Plan"):
             if ejercicio:
+                # El valor de 'dia' es un número entero
                 run_query("INSERT INTO planes (alumno_id, ejercicio, series, repeticiones, dia) VALUES (?, ?, ?, ?, ?)",
-                          (alumno_id, ejercicio, series, reps, dia))
+                          (alumno_id, ejercicio, series, reps, dia_numero))
                 st.success("Ejercicio agregado.")
             else:
                 st.warning("Escribe el nombre del ejercicio.")
     else:
         st.warning("Primero debes registrar alumnos.")
 
-# --- SECCIÓN 4: VER PLAN (Sin cambios) ---
+# --- SECCIÓN 4: VER PLAN (Actualizado: 'dia' se convierte a nombre y se ordena) ---
 elif menu == "Ver Plan de Alumno":
     st.header("📅 Seguimiento de Rutinas")
     alumnos = run_query("SELECT id, nombre FROM alumnos", fetch=True)
@@ -115,69 +136,28 @@ elif menu == "Ver Plan de Alumno":
         seleccion = st.selectbox("Ver rutina de:", list(opciones_alumnos.keys()))
         alumno_id = opciones_alumnos[seleccion]
         
-        # Obtener plan del alumno
+        # Obtener plan del alumno, ordenando por el número del día
         plan_data = run_query("SELECT dia, ejercicio, series, repeticiones FROM planes WHERE alumno_id = ? ORDER BY dia", (alumno_id,), fetch=True)
         
         if plan_data:
-            df_plan = pd.DataFrame(plan_data, columns=['Día', 'Ejercicio', 'Series', 'Repeticiones'])
+            df_plan = pd.DataFrame(plan_data, columns=['Día (Nro)', 'Ejercicio', 'Series', 'Repeticiones'])
+            
+            # Mapear el número del día al nombre para mostrar
+            df_plan['Día'] = df_plan['Día (Nro)'].apply(lambda x: DIA_MAP.get(x, 'N/A'))
+            
+            # Seleccionar y reordenar las columnas finales
+            df_plan = df_plan[['Día', 'Ejercicio', 'Series', 'Repeticiones']]
+            
             st.table(df_plan)
         else:
             st.info(f"{seleccion} no tiene ejercicios asignados todavía.")
     else:
         st.warning("No hay alumnos en la base de datos.")
 
-# --- SECCIÓN 5: IMPORTAR CSV (NUEVA FUNCIONALIDAD) ---
+# --- SECCIÓN 5: IMPORTAR CSV (Actualizado: 'dia' es número) ---
 elif menu == "Importar desde CSV":
     st.header("📥 Importación Masiva (CSV)")
-
+    
     # --- Importar Alumnos ---
     st.subheader("1. Importar Base de Alumnos")
-    uploaded_alumnos = st.file_uploader("Sube el archivo CSV de alumnos (nombre,edad,peso,objetivo,fecha_ingreso)", type="csv", key="alumnos")
-    
-    if uploaded_alumnos is not None:
-        try:
-            df_alumnos = pd.read_csv(uploaded_alumnos)
-            expected_cols = ['nombre', 'edad', 'peso', 'objetivo', 'fecha_ingreso']
-            
-            if not all(col in df_alumnos.columns for col in expected_cols):
-                st.error(f"Error: El CSV de alumnos debe contener las columnas: {', '.join(expected_cols)}")
-            else:
-                count = 0
-                for index, row in df_alumnos.iterrows():
-                    # Intenta insertar cada fila
-                    run_query("INSERT INTO alumnos (nombre, edad, peso, objetivo, fecha_ingreso) VALUES (?, ?, ?, ?, ?)", 
-                              (row['nombre'], row['edad'], row['peso'], row['objetivo'], row['fecha_ingreso']))
-                    count += 1
-                st.success(f"✅ {count} alumnos importados con éxito.")
-                st.dataframe(df_alumnos.head(5)) # Mostrar las primeras 5 filas para verificación
-                st.info("Revisa la sección 'Ver Alumnos' para ver la base de datos completa.")
-
-        except Exception as e:
-            st.error(f"Ocurrió un error al procesar el CSV de alumnos: {e}")
-
-
-    # --- Importar Planes ---
-    st.subheader("2. Importar Planes de Entrenamiento")
-    uploaded_planes = st.file_uploader("Sube el archivo CSV de planes (alumno_id,ejercicio,series,repeticiones,dia)", type="csv", key="planes")
-
-    if uploaded_planes is not None:
-        st.warning("Asegúrate de que los 'alumno_id' en este CSV ya existan en la base de datos de Alumnos.")
-        try:
-            df_planes = pd.read_csv(uploaded_planes)
-            expected_cols_plan = ['alumno_id', 'ejercicio', 'series', 'repeticiones', 'dia']
-            
-            if not all(col in df_planes.columns for col in expected_cols_plan):
-                st.error(f"Error: El CSV de planes debe contener las columnas: {', '.join(expected_cols_plan)}")
-            else:
-                count = 0
-                for index, row in df_planes.iterrows():
-                    # Intenta insertar cada fila
-                    run_query("INSERT INTO planes (alumno_id, ejercicio, series, repeticiones, dia) VALUES (?, ?, ?, ?, ?)",
-                              (row['alumno_id'], row['ejercicio'], row['series'], row['repeticiones'], row['dia']))
-                    count += 1
-                st.success(f"✅ {count} planes importados con éxito.")
-                st.dataframe(df_planes.head(5)) # Mostrar las primeras 5 filas para verificación
-                st.info("Revisa la sección 'Ver Plan de Alumno' para verificar la importación.")
-
-        except Exception as e:
-            st.error(f"Ocurrió un error al procesar el CSV de planes: {e}")
+    uploaded_alumnos = st.file_uploader("Sube el archivo CSV de alumnos (nombre,edad,peso
