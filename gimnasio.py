@@ -4,18 +4,18 @@ import sqlite3
 from datetime import date
 import io 
 
-# --- Mapeo Día de la Semana (Número a Nombre y viceversa) ---
-# 1 = Lunes, 7 = Domingo
+# --- Mapeo Día de la Semana (Número a Texto "Día Nro") ---
+# 1 = Lunes (Día 1), 7 = Domingo (Día 7)
 DIA_MAP = {
-    1: "Lunes",
-    2: "Martes",
-    3: "Miércoles",
-    4: "Jueves",
-    5: "Viernes",
-    6: "Sábado",
-    7: "Domingo"
+    1: "Día 1",
+    2: "Día 2",
+    3: "Día 3",
+    4: "Día 4",
+    5: "Día 5",
+    6: "Día 6",
+    7: "Día 7"
 }
-# Diccionario invertido para el selectbox
+# Diccionario invertido para el selectbox. Los valores del selectbox serán las claves.
 INVERSE_DIA_MAP = {v: k for k, v in DIA_MAP.items()}
 
 
@@ -133,7 +133,7 @@ elif menu == "Ver Alumnos":
     else:
         st.info("Aún no hay alumnos registrados.")
 
-# --- SECCIÓN 3: CREAR PLAN (Días con número) ---
+# --- SECCIÓN 3: CREAR PLAN (Días con número en el SelectBox) ---
 elif menu == "Crear Plan":
     st.header("🏋️‍♂️ Crear Rutina")
     
@@ -148,9 +148,10 @@ elif menu == "Crear Plan":
         
         c1, c2, c3, c4 = st.columns(4)
         
-        # Muestra el nombre del día, pero guarda el número
-        dia_nombre = c1.selectbox("Día", list(INVERSE_DIA_MAP.keys()))
-        dia_numero = INVERSE_DIA_MAP[dia_nombre] # Convertir el nombre a número (1-7)
+        # Muestra el texto "Día Nro"
+        dia_nombre_con_numero = c1.selectbox("Día", list(INVERSE_DIA_MAP.keys()))
+        # Convertir el texto seleccionado ("Día Nro") al número de día (1-7)
+        dia_numero = INVERSE_DIA_MAP[dia_nombre_con_numero] 
         
         ejercicio = c2.text_input("Ejercicio (ej. Press Banca)")
         series = c3.number_input("Series", min_value=1, value=3)
@@ -167,7 +168,7 @@ elif menu == "Crear Plan":
     else:
         st.warning("Primero debes registrar alumnos.")
 
-# --- SECCIÓN 4: VER PLAN (Día excluido de la visualización) ---
+# --- SECCIÓN 4: VER PLAN (Día mostrado como "Día Nro") ---
 elif menu == "Ver Plan de Alumno":
     st.header("📅 Seguimiento de Rutinas")
     alumnos = run_query("SELECT id, nombre FROM alumnos", fetch=True)
@@ -196,19 +197,20 @@ elif menu == "Ver Plan de Alumno":
         # Al seleccionar, actualiza el estado de sesión para mantener la consistencia
         st.session_state['selected_alumno_id'] = alumno_id
         
-        # Consulta SQL: Se sigue consultando el 'dia' para poder ordenar
+        # Consulta SQL: Se sigue consultando el 'dia' para ordenar y mostrar
         plan_data = run_query("SELECT dia, ejercicio, series, repeticiones FROM planes WHERE alumno_id = ? ORDER BY dia ASC", (alumno_id,), fetch=True)
         
         if plan_data:
-            df_plan = pd.DataFrame(plan_data, columns=['Día (Nro)', 'Ejercicio', 'Series', 'Repeticiones'])
+            # Los datos originales incluyen el número de día
+            df_plan = pd.DataFrame(plan_data, columns=['Día', 'Ejercicio', 'Series', 'Repeticiones'])
             
-            # **CAMBIO AQUÍ:** No mapeamos ni mostramos la columna 'Día'
+            # **CAMBIO AQUÍ:** Mapeamos el número de día al formato "Día Nro"
+            df_plan['Día'] = df_plan['Día'].apply(lambda x: DIA_MAP.get(x, 'N/A'))
             
-            # Seleccionar solo las columnas de Ejercicio, Series y Repeticiones
-            df_plan = df_plan[['Ejercicio', 'Series', 'Repeticiones']]
+            # Seleccionar y reordenar las columnas finales
+            df_plan = df_plan[['Día', 'Ejercicio', 'Series', 'Repeticiones']]
             
             st.table(df_plan)
-            st.caption("Nota: Los ejercicios están ordenados por día de la semana (Lunes a Domingo), aunque la columna del día no se muestre.")
         else:
             st.info(f"{seleccion} no tiene ejercicios asignados todavía.")
     else:
@@ -244,7 +246,7 @@ elif menu == "Importar desde CSV":
 
     # --- Importar Planes ---
     st.subheader("2. Importar Planes de Entrenamiento")
-    st.info("El campo 'dia' en este CSV debe ser un número entero del 1 al 7 (1=Lunes, 7=Domingo).")
+    st.info("El campo 'dia' en este CSV debe ser un número entero del 1 al 7 (Día 1=Lunes, Día 7=Domingo).")
     uploaded_planes = st.file_uploader("Sube el archivo CSV de planes (alumno_id,ejercicio,series,repeticiones,dia)", type="csv", key="planes")
 
     if uploaded_planes is not None:
