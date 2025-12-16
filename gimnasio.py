@@ -108,7 +108,6 @@ elif menu == "Ver Alumnos":
     if data:
         df = pd.DataFrame(data, columns=['ID', 'Nombre', 'Edad', 'Peso', 'Objetivo', 'Ingreso'])
         
-        # Muestra la tabla de datos de manera normal
         st.subheader("Listado de Alumnos")
         st.dataframe(df, use_container_width=True, hide_index=True)
 
@@ -126,7 +125,6 @@ elif menu == "Ver Alumnos":
             # Botón para la navegación directa
             if col1.button("Ver Plan", key=f"btn_plan_{row['ID']}", 
                            on_click=set_student_and_navigate, args=(row['ID'],)):
-                # st.rerun() es llamado implícitamente por el on_click si el estado cambia
                 pass # La función on_click ya maneja la lógica
 
             col2.write(f"**ID {row['ID']}**: {row['Nombre']} (Objetivo: {row['Objetivo']})")
@@ -169,7 +167,7 @@ elif menu == "Crear Plan":
     else:
         st.warning("Primero debes registrar alumnos.")
 
-# --- SECCIÓN 4: VER PLAN (Muestra el nombre del día y ordena por número) ---
+# --- SECCIÓN 4: VER PLAN (Día excluido de la visualización) ---
 elif menu == "Ver Plan de Alumno":
     st.header("📅 Seguimiento de Rutinas")
     alumnos = run_query("SELECT id, nombre FROM alumnos", fetch=True)
@@ -198,19 +196,19 @@ elif menu == "Ver Plan de Alumno":
         # Al seleccionar, actualiza el estado de sesión para mantener la consistencia
         st.session_state['selected_alumno_id'] = alumno_id
         
-        # Obtener plan del alumno, ordenando por el número del día (ASC)
+        # Consulta SQL: Se sigue consultando el 'dia' para poder ordenar
         plan_data = run_query("SELECT dia, ejercicio, series, repeticiones FROM planes WHERE alumno_id = ? ORDER BY dia ASC", (alumno_id,), fetch=True)
         
         if plan_data:
             df_plan = pd.DataFrame(plan_data, columns=['Día (Nro)', 'Ejercicio', 'Series', 'Repeticiones'])
             
-            # Mapear el número del día al nombre para mostrar
-            df_plan['Día'] = df_plan['Día (Nro)'].apply(lambda x: DIA_MAP.get(x, 'N/A'))
+            # **CAMBIO AQUÍ:** No mapeamos ni mostramos la columna 'Día'
             
-            # Seleccionar y reordenar las columnas finales
-            df_plan = df_plan[['Día', 'Ejercicio', 'Series', 'Repeticiones']]
+            # Seleccionar solo las columnas de Ejercicio, Series y Repeticiones
+            df_plan = df_plan[['Ejercicio', 'Series', 'Repeticiones']]
             
             st.table(df_plan)
+            st.caption("Nota: Los ejercicios están ordenados por día de la semana (Lunes a Domingo), aunque la columna del día no se muestre.")
         else:
             st.info(f"{seleccion} no tiene ejercicios asignados todavía.")
     else:
